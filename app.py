@@ -91,7 +91,7 @@ if not st.session_state.logged_in:
         user = st.text_input("Username", key="admin_user")
         pwd = st.text_input("Password", type="password", key="admin_pwd")
         if st.button("Login"):
-            if user == "admin" and pwd == "admin123":
+            if user == "CARO_26" and pwd == "FM_CARO":
                 st.session_state.logged_in = True
                 st.session_state.role = "admin"
                 st.rerun()
