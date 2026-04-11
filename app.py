@@ -6,21 +6,18 @@ from datetime import datetime
 from io import BytesIO
 import os
 import errno
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # --- 1. PAGE SETUP ---
 st.set_page_config(page_title="Asset Lifecycle Analytics", layout="wide")
 
 # =====================================================================
 # ⚡ FILE-SPECIFIC SKIPROWS CONFIG
-# Root cause fix: 100400_A.xlsx has ONE blank row at top (header at row 1),
-# while 100500 and PV files have TWO rows before header (header at row 2).
-# The old code used skiprows=2 for ALL files — causing 100400 to read data
-# rows AS headers (numeric column names like 1008, 40002000, etc.),
-# which broke column detection, Gross value parsing, and all downstream logic.
 # =====================================================================
 FILE_SKIPROWS = {
-    "100400_A.xlsx": 1,       # Header is on row 1 (only 1 blank row above)
-    "100500_A.xlsx": 2,       # Header is on row 2
+    "100400_A.xlsx": 1,
+    "100500_A.xlsx": 2,
     "PV Pending IT_Admin Rajan Kapoor.xlsx": 2,
 }
 DEFAULT_SKIPROWS = 2
@@ -30,7 +27,6 @@ def get_skiprows(file_path):
     fname = os.path.basename(str(file_path))
     if fname in FILE_SKIPROWS:
         return FILE_SKIPROWS[fname]
-    # Dynamic detection for uploaded files: scan first 10 rows for known header keywords
     try:
         xl = pd.ExcelFile(file_path)
         for i in range(6):
@@ -77,6 +73,104 @@ def smart_read_file(file_path):
             return pd.DataFrame()
 
 # =====================================================================
+# 📥 SIMPLE TEMPLATE GENERATOR - SAME FORMAT AS ORIGINAL
+# =====================================================================
+def generate_simple_template():
+    """Generate template in exact same format as original data."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Asset Data"
+    
+    # EXACT columns from your current data
+    columns = [
+        'Location',
+        'Description',
+        'Asset Category Description',
+        'Capitalization Date',
+        'Asset No.',
+        'Responsibility/Stakeholder for PV',
+        'Last Approver comments',
+        'WBS No.',
+        'Asset Class Desc.',
+        'Quantity',
+        'gross amt',
+        'Acc. Dep',
+        'Net value as on 31.03.2024',
+        'ACC Dep upto 31.12.2025',
+        'Asset Main No Text',
+        'PO',
+        'Stake Holder/Responsibility center',
+        'Current Location',
+        'Verification Date',
+        'Verified by (Employee No)',
+        'Verifier Comments',
+        'Approved by (Employee No)',
+        'Approver Name',
+        'Approver Comments',
+        'Status'
+    ]
+    
+    # Header styling
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True, size=10)
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # Write headers
+    for col_num, column_title in enumerate(columns, 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.value = column_title
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_alignment
+        cell.border = border
+    
+    # Sample data - 3 rows
+    sample_data = [
+        ['Delhi', 'Dell Desktop Computer', 'Computers', '2020-01-15', 'ASSET001', 'HR Department', 'Verified', 'WBS-001', 'IT Equipment', 1, 45000, 9000, 36000, 13500, 'MAIN-001', 'PO-2020-001', 'Procurement-Delhi', 'Delhi Office', '2024-01-20', '12345', 'Good condition', '67890', 'Raj Kumar', 'Approved', 'AVAILABLE'],
+        ['Mumbai', 'HP LaserJet Pro', 'Printers', '2019-06-20', 'ASSET002', 'Operations', 'Verified', 'WBS-002', 'Office Equipment', 1, 32000, 8000, 24000, 12000, 'MAIN-002', 'PO-2019-006', 'Procurement-Mumbai', 'Mumbai Office', '2024-01-15', '54321', 'Functional', '11111', 'Priya Singh', 'Approved', 'AVAILABLE'],
+        ['Bangalore', 'Office Chair', 'Furniture', '2018-03-10', 'ASSET003', 'Admin', 'Verified', 'WBS-003', 'Furniture', 5, 5000, 3000, 2000, 500, 'MAIN-003', 'PO-2018-003', 'Procurement-Bangalore', 'Bangalore Office', '2024-01-18', '99999', 'Needs replacement', '22222', 'Amit Patel', 'For disposal', 'OBSOLETE'],
+    ]
+    
+    # Data styling
+    data_alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    data_font = Font(size=9)
+    
+    # Write sample data
+    for row_num, row_data in enumerate(sample_data, 2):
+        for col_num, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_num, column=col_num)
+            cell.value = value
+            cell.alignment = data_alignment
+            cell.font = data_font
+            cell.border = border
+            
+            # Format numeric columns
+            if col_num in [10, 11, 12, 13, 14]:
+                cell.number_format = '#,##0.00'
+            # Format date columns
+            elif col_num in [4, 19]:
+                cell.number_format = 'YYYY-MM-DD'
+    
+    # Set column widths
+    widths = [12, 20, 20, 15, 12, 20, 15, 12, 18, 8, 12, 12, 18, 18, 15, 12, 25, 18, 15, 15, 15, 15, 15, 20, 12]
+    for i, width in enumerate(widths, 1):
+        ws.column_dimensions[chr(64 + i if i <= 26 else i)].width = width
+    
+    ws.freeze_panes = "A2"
+    
+    # Convert to bytes
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output.getvalue()
+
+# =====================================================================
 # 🔐 LOGIN SYSTEM
 # =====================================================================
 if 'logged_in' not in st.session_state:
@@ -120,11 +214,9 @@ def _standardize_columns(df):
 
 def _fix_gross_value(df):
     """Find and standardize the gross value column."""
-    # Already correct name
     if 'Gross value' in df.columns:
         df['Gross value'] = pd.to_numeric(df['Gross value'], errors='coerce').fillna(0)
         return df
-    # Search for it
     gross_col = next((c for c in df.columns if 'gross' in c.lower() and
                       ('amt' in c.lower() or 'value' in c.lower())), None)
     if gross_col:
@@ -246,6 +338,18 @@ try:
         st.session_state.role = None
         st.rerun()
 
+    # ========== TEMPLATE DOWNLOAD ==========
+    st.sidebar.markdown("---")
+    st.sidebar.header("📥 Download Template")
+    template_data = generate_simple_template()
+    st.sidebar.download_button(
+        label="📋 Download Upload Template",
+        data=template_data,
+        file_name="Asset_Upload_Template.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        help="Same format as current data"
+    )
+
     # FILE UPLOAD (Admin only)
     if st.session_state.role == "admin":
         st.sidebar.markdown("---")
@@ -348,15 +452,16 @@ try:
             st.markdown("#### Financial Impact by Category (Top 10)")
             cat_impact = custom_df.groupby('Asset Category Description')['Financial Impact'].sum().reset_index()
             cat_impact = cat_impact.nlargest(10, 'Financial Impact')
-            fig_custom_pie = px.pie(cat_impact, names='Asset Category Description', values='Financial Impact', hole=0.5)
-            st.plotly_chart(fig_custom_pie, use_container_width=True)
+            if not cat_impact.empty:
+                fig_custom_pie = px.pie(cat_impact, names='Asset Category Description', values='Financial Impact', hole=0.5)
+                st.plotly_chart(fig_custom_pie, use_container_width=True)
         with c2:
-            st.markdown("#### Impact by Location (Top 10)")
+            st.markdown("#### Impact by Cost Center (Top 10)")
             loc_impact = custom_df.groupby('Cost Center desc.')['Financial Impact'].sum().reset_index()
             loc_impact = loc_impact.nlargest(10, 'Financial Impact')
-            fig_custom_bar = px.bar(loc_impact, x='Cost Center desc.', y='Financial Impact', color='Cost Center desc.')
-            fig_custom_bar.update_layout(showlegend=False, xaxis_title="Location", yaxis_title="Impact (Exact ₹)")
-            st.plotly_chart(fig_custom_bar, use_container_width=True)
+            if not loc_impact.empty:
+                fig_custom_pie2 = px.pie(loc_impact, names='Cost Center desc.', values='Financial Impact', hole=0.5)
+                st.plotly_chart(fig_custom_pie2, use_container_width=True)
 
         st.markdown("### 📥 Download Custom Evaluation Report")
         dl_cols = ['Asset No.', 'Serial No.', 'Asset Category Description', 'Cost Center desc.', 'Gross value', 'Age_Years', 'Lifecycle (Years)', 'Est. Current Value', 'Financial Impact', 'Is_EOL']
@@ -444,7 +549,7 @@ try:
 
         st.markdown("---")
 
-        st.markdown("### 🔮 Predictive Insights: Cost of Inaction & Loss Curve")
+        st.markdown("### 🔮 Predictive Insights: Cost of Inaction & Impact Distribution")
 
         future_df = merged_active_df.copy()
         future_df['Age_Years'] = future_df['Age_Years'] + 2
@@ -464,12 +569,14 @@ try:
                 f"🔻 **Additional Loss from delay: {format_curr(delayed_loss)}**"
             )
         with coi_col2:
-            curve_df = merged_active_df[merged_active_df['Age_Years'].notna()]
-            fig_curve = px.scatter(curve_df, x='Age_Years', y='Financial Impact', color='Asset Category Description',
-                                   title="Loss Curve (Impact vs Asset Age)",
-                                   labels={'Age_Years': 'Age (Years)', 'Financial Impact': 'Financial Impact (₹)'})
-            fig_curve.update_layout(margin=dict(l=20, r=20, t=40, b=20), height=300)
-            st.plotly_chart(fig_curve, use_container_width=True)
+            # PIE CHART - Impact by Category
+            impact_by_cat = merged_active_df.groupby('Asset Category Description')['Financial Impact'].sum().reset_index()
+            impact_by_cat = impact_by_cat[impact_by_cat['Financial Impact'] > 0]
+            if not impact_by_cat.empty:
+                fig_pie = px.pie(impact_by_cat, names='Asset Category Description', values='Financial Impact', 
+                                title="Impact Distribution by Category", hole=0.3)
+                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                st.plotly_chart(fig_pie, use_container_width=True)
 
         st.markdown("---")
 
@@ -569,15 +676,16 @@ try:
                             st.markdown(f"#### 1. Category-Wise Impact ({range_label})")
                             appliance_impact = eol_df.groupby('Asset Category Description')['Financial Impact'].sum().reset_index()
                             appliance_impact = appliance_impact.nlargest(10, 'Financial Impact')
-                            fig_app = px.pie(appliance_impact, names='Asset Category Description', values='Financial Impact', hole=0.5)
-                            st.plotly_chart(fig_app, use_container_width=True)
+                            if not appliance_impact.empty:
+                                fig_app = px.pie(appliance_impact, names='Asset Category Description', values='Financial Impact', hole=0.5)
+                                st.plotly_chart(fig_app, use_container_width=True)
                         with c2:
                             st.markdown(f"#### 2. Location-Wise Impact ({range_label})")
                             location_impact = eol_df.groupby('Cost Center desc.')['Financial Impact'].sum().reset_index()
                             location_impact = location_impact.nlargest(10, 'Financial Impact')
-                            fig_loc = px.bar(location_impact, x='Cost Center desc.', y='Financial Impact', color='Cost Center desc.')
-                            fig_loc.update_layout(showlegend=False, xaxis_title="Location / Cost Center", yaxis_title="Financial Impact (Exact ₹)")
-                            st.plotly_chart(fig_loc, use_container_width=True)
+                            if not location_impact.empty:
+                                fig_loc = px.pie(location_impact, names='Cost Center desc.', values='Financial Impact', hole=0.5)
+                                st.plotly_chart(fig_loc, use_container_width=True)
 
                         st.markdown("---")
                         st.markdown("### 🔍 Deep Dive: Asset Report for this Range")
@@ -667,16 +775,18 @@ try:
             if not custom_age_df.empty:
                 sc_c1, sc_c2 = st.columns(2)
                 with sc_c1:
-                    sc_pie = px.pie(custom_age_df.groupby('Asset Category Description')['Financial Impact'].sum().reset_index(),
-                                    names='Asset Category Description', values='Financial Impact', hole=0.5,
-                                    title="Category-wise Financial Impact")
-                    st.plotly_chart(sc_pie, use_container_width=True)
+                    sc_cat = custom_age_df.groupby('Asset Category Description')['Financial Impact'].sum().reset_index()
+                    if not sc_cat.empty:
+                        sc_pie = px.pie(sc_cat, names='Asset Category Description', values='Financial Impact', hole=0.5,
+                                       title="Category-wise Financial Impact")
+                        st.plotly_chart(sc_pie, use_container_width=True)
                 with sc_c2:
-                    sc_bar = px.bar(custom_age_df.groupby('Cost Center desc.')['Financial Impact'].sum().nlargest(10).reset_index(),
-                                    x='Cost Center desc.', y='Financial Impact', color='Cost Center desc.',
-                                    title="Top 10 Locations by Impact")
-                    sc_bar.update_layout(showlegend=False, xaxis_title="Location", yaxis_title="Impact (Exact ₹)")
-                    st.plotly_chart(sc_bar, use_container_width=True)
+                    sc_loc = custom_age_df.groupby('Cost Center desc.')['Financial Impact'].sum().reset_index()
+                    sc_loc = sc_loc.nlargest(10, 'Financial Impact')
+                    if not sc_loc.empty:
+                        sc_pie_loc = px.pie(sc_loc, names='Cost Center desc.', values='Financial Impact', hole=0.5,
+                                           title="Top 10 Locations by Impact")
+                        st.plotly_chart(sc_pie_loc, use_container_width=True)
             else:
                 st.info("No assets fall into this custom scenario.")
 
@@ -785,16 +895,18 @@ try:
             if not exact_year_df.empty:
                 sc_c1, sc_c2 = st.columns(2)
                 with sc_c1:
-                    sc_pie = px.pie(exact_year_df.groupby('Asset Category Description')['Financial Impact'].sum().reset_index(),
-                                    names='Asset Category Description', values='Financial Impact', hole=0.5,
-                                    title="Category-wise Financial Impact")
-                    st.plotly_chart(sc_pie, use_container_width=True)
+                    sc_cat = exact_year_df.groupby('Asset Category Description')['Financial Impact'].sum().reset_index()
+                    if not sc_cat.empty:
+                        sc_pie = px.pie(sc_cat, names='Asset Category Description', values='Financial Impact', hole=0.5,
+                                       title="Category-wise Financial Impact")
+                        st.plotly_chart(sc_pie, use_container_width=True)
                 with sc_c2:
-                    sc_bar = px.bar(exact_year_df.groupby('Cost Center desc.')['Financial Impact'].sum().nlargest(10).reset_index(),
-                                    x='Cost Center desc.', y='Financial Impact', color='Cost Center desc.',
-                                    title="Top 10 Locations by Impact")
-                    sc_bar.update_layout(showlegend=False, xaxis_title="Location", yaxis_title="Impact (Exact ₹)")
-                    st.plotly_chart(sc_bar, use_container_width=True)
+                    sc_loc = exact_year_df.groupby('Cost Center desc.')['Financial Impact'].sum().reset_index()
+                    sc_loc = sc_loc.nlargest(10, 'Financial Impact')
+                    if not sc_loc.empty:
+                        sc_pie_loc = px.pie(sc_loc, names='Cost Center desc.', values='Financial Impact', hole=0.5,
+                                           title="Top 10 Locations by Impact")
+                        st.plotly_chart(sc_pie_loc, use_container_width=True)
             else:
                 st.info(f"No assets fall exactly in the {selected_age} to {selected_age+1} year range that have exceeded their lifecycle.")
 
@@ -942,23 +1054,18 @@ try:
             chart_col1, chart_col2 = st.columns(2)
             with chart_col1:
                 st.markdown("#### Category-wise Distribution")
-                if st_impact > 0:
-                    fig_st_pie = px.pie(filtered_df, names='Asset Category Description', values='Financial Impact', hole=0.4)
-                else:
-                    fig_st_pie = px.pie(filtered_df, names='Asset Category Description', title="By Asset Count", hole=0.4)
-                fig_st_pie.update_traces(textposition='inside', textinfo='percent+label')
-                st.plotly_chart(fig_st_pie, use_container_width=True)
+                cat_stat = filtered_df.groupby('Asset Category Description')['Financial Impact'].sum().reset_index()
+                if not cat_stat.empty:
+                    fig_st_pie = px.pie(cat_stat, names='Asset Category Description', values='Financial Impact', hole=0.4)
+                    fig_st_pie.update_traces(textposition='inside', textinfo='percent+label')
+                    st.plotly_chart(fig_st_pie, use_container_width=True)
             with chart_col2:
-                st.markdown("#### Location-wise Impact")
-                if st_impact > 0:
-                    loc_st_df = filtered_df.groupby('Cost Center desc.')['Financial Impact'].sum().nlargest(10).reset_index()
-                    fig_st_bar = px.bar(loc_st_df, x='Cost Center desc.', y='Financial Impact', color='Cost Center desc.')
-                else:
-                    loc_st_df = filtered_df['Cost Center desc.'].value_counts().nlargest(10).reset_index()
-                    loc_st_df.columns = ['Cost Center desc.', 'Count']
-                    fig_st_bar = px.bar(loc_st_df, x='Cost Center desc.', y='Count', color='Cost Center desc.')
-                fig_st_bar.update_layout(showlegend=False, xaxis_title="Location", yaxis_title="Impact / Count")
-                st.plotly_chart(fig_st_bar, use_container_width=True)
+                st.markdown("#### Location-wise Distribution")
+                loc_stat = filtered_df.groupby('Cost Center desc.')['Financial Impact'].sum().reset_index()
+                if not loc_stat.empty:
+                    fig_st_pie_loc = px.pie(loc_stat, names='Cost Center desc.', values='Financial Impact', hole=0.4)
+                    fig_st_pie_loc.update_traces(textposition='inside', textinfo='percent+label')
+                    st.plotly_chart(fig_st_pie_loc, use_container_width=True)
 
             st.markdown("### 📋 Detailed Asset List")
             base_cols = ['Asset No.', 'Description', 'Dataset_Source', 'Asset Category Description', 'Cost Center desc.', 'Age_Years', 'Gross value', 'Financial Impact', 'Final_Unified_Status']
